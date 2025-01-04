@@ -1,0 +1,10 @@
+{
+    "integrity": "sha256-Lidl7umKI3R5veigmZtR3iOD+vrV1Ijq7eqTonqKu98=",
+    "strip_prefix": "url-boost-1.83.0",
+    "url": "https://github.com/boostorg/url/archive/refs/tags/boost-1.83.0.tar.gz",
+    "patch_strip": 0,
+    "overlay": {
+        "BUILD.bazel": "sha256-j35FOX/x1r2yhiJfnV0jm70DvSVHDsUBpFAYwOXgw1A=",
+        "MODULE.bazel": "sha256-M5/L+TgNMkQBn4pOO6K4QAdIDa80M8wwsrr+VAsjiJU="
+    }
+}
