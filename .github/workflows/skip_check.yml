@@ -13,12 +13,12 @@ jobs:
       issues: write
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@0080882f6c36860b6ba35c610c98ce87d4e2f26f # v2.10.2
+        uses: step-security/harden-runner@cb605e52c26070c328afc4562f0b4ada7618a84e # v2.10.4
         with:
           egress-policy: audit
 
       - name: Run bot
-        uses: bazelbuild/continuous-integration/actions/bcr-pr-reviewer@854de5d7871f734a858bf1efa4454e8260e620a0 # master
+        uses: bazelbuild/continuous-integration/actions/bcr-pr-reviewer@fe56acdc33166e14a73ee5efd082480768c6e268 # master
         with:
           token: ${{ secrets.BCR_PR_REVIEW_HELPER_TOKEN }}
           action-type: skip_check

@@ -51,6 +51,7 @@ py_binary(
     deps = [
         ":registry",
         ":verify_stable_archives",
+        requirement("requests"),
     ],
 )
 
@@ -98,6 +99,44 @@ py_binary(
     data = [
         "@buildozer_binary//:buildozer.exe",
     ]
+)
+
+genrule(
+    name = "bazelci_py",
+    srcs = ["@bazelci_py_file//file"],
+    outs = ["bazelci.py"],
+    cmd = "cp $(location @bazelci_py_file//file) $@",
+)
+
+genrule(
+    name = "bcr_presubmit_py",
+    srcs = ["@bcr_presubmit_py_file//file"],
+    outs = ["bcr_presubmit.py"],
+    cmd = "cp $(location @bcr_presubmit_py_file//file) $@",
+)
+
+py_library(
+    name = "bazelci",
+    srcs = ["bazelci.py"],
+)
+
+py_library(
+    name = "bcr_presubmit",
+    srcs = ["bcr_presubmit.py"],
+    deps = [
+        ":bazelci",
+        requirement("requests"),
+        requirement("pyyaml"),
+    ],
+)
+
+py_binary(
+    name = "setup_presubmit_repos",
+    srcs = ["setup_presubmit_repos.py"],
+    imports = ["."],
+    deps = [
+        ":bcr_presubmit",
+    ],
 )
 
 sh_test(

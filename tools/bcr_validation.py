@@ -32,6 +32,8 @@ import ast
 import json
 import subprocess
 from pathlib import Path
+import re
+import requests
 import shutil
 import sys
 import tempfile
@@ -119,6 +121,75 @@ def fix_line_endings(lines):
     return [line.rstrip() + "\n" for line in lines]
 
 
+def extract_reference(repo_path, path):
+    """
+    Extracts the reference from a path matching the pattern /<repo_path>/archive/<ref>.zip or /<repo_path>/archive/<ref>.tar.gz
+
+    Args:
+        repo_path: The repository path.
+        path: The path to extract the reference from.
+
+    Returns:
+        The reference if found, otherwise None.
+    """
+    pattern = rf"^/{re.escape(repo_path)}/archive/(.+)\.(zip|tar\.gz)$"
+    match = re.search(pattern, path)
+    if match:
+        return match.group(1)
+    return None
+
+
+def is_ref_in_original_repo(repo_path, reference) -> bool:
+    """
+    Checks if the given reference is truly part of the original GitHub repository's history.
+
+    Uses the unofficial '/latest-commit/<REF>' endpoint, which returns JSON containing "isSpoofed".
+
+    Args:
+        repo_path: The repository path.
+        reference: The reference to check
+
+    Returns:
+        True if the reference is found AND not spoofed; False otherwise
+    """
+    url = f"https://github.com/{repo_path}/latest-commit/{reference}"
+    headers = {"Accept": "application/json"}
+
+    try:
+        response = requests.get(url, headers=headers)
+    except requests.RequestException:
+        raise BcrValidationException(f"Failed to check if reference is from the original repository via {url}")
+
+    if not response.status_code == 200:
+        # reference doesn't exist at all
+        return False
+
+    data = response.json()
+    if "isSpoofed" not in data:
+        raise BcrValidationException(f"Missing 'isSpoofed' attribute in response from {url}: {data}")
+
+    return not data.get("isSpoofed")
+
+
+def check_github_url(repo_path, source_url):
+    parts = urlparse(source_url)
+    # Avoid potential path manipulations with "../"
+    normalized_path = os.path.abspath(parts.path)
+
+    # If the URL doesn't starts with https://github.com/<repo_path>, return False
+    if parts.scheme != "https" or parts.netloc != "github.com" or not normalized_path.startswith(f"/{repo_path}/"):
+        return False
+
+    # Allow paths under /<repo_path>/releases/download
+    if normalized_path.startswith(f"/{repo_path}/releases/download/"):
+        return True
+
+    # Otherwise, the source archive must match /<repo_path>/archive/<reference>.<extension>
+    # And we check if the reference does come from the original repository.
+    reference = extract_reference(repo_path, normalized_path)
+    return reference and is_ref_in_original_repo(repo_path, reference)
+
+
 class BcrValidationException(Exception):
     """
     Raised whenever we should stop the validation immediately.
@@ -173,12 +244,7 @@ class BcrValidator:
                 break
             repo_type, repo_path = source_repository.split(":")
             if repo_type == "github":
-                parts = urlparse(source_url)
-                matched = (
-                    parts.scheme == "https"
-                    and parts.netloc == "github.com"
-                    and os.path.abspath(parts.path).startswith(f"/{repo_path}/")
-                )
+                matched = check_github_url(repo_path, source_url)
             elif repo_type == "https":
                 repo = urlparse(source_repository)
                 parts = urlparse(source_url)
@@ -190,7 +256,10 @@ class BcrValidator:
         if not matched:
             self.report(
                 BcrValidationResult.FAILED,
-                f"The source URL of {module_name}@{version} ({source_url}) doesn't match any of the module's source repositories {source_repositories}.",
+                f"The source URL of {module_name}@{version} ({source_url}) doesn't match any of the module's source repositories {source_repositories}.\n"
+                + "If it's a GitHub URL, only the following forms are allowed:\n"
+                + "  1) https://github.com/<OWNER>/<REPO>/releases/download/... (Recommended)\n"
+                + "  2) https://github.com/<OWNER>/<REPO>/archive/<REF>.(tar.gz|zip) where REF must come from the original repository",
             )
         else:
             self.report(BcrValidationResult.GOOD, "The source URL matches one of the source repositories.")
@@ -479,9 +548,16 @@ class BcrValidator:
         if not conflict_found:
             self.report(BcrValidationResult.GOOD, "No module name conflict found.")
 
+    def verify_no_dir_symlinks(self):
+        """Check there is no directory symlink under modules/ dir"""
+        for dirpath, dirnames, _ in os.walk(self.registry.root / "modules"):
+            for dirname in dirnames:
+                full_path = os.path.join(dirpath, dirname)
+                if os.path.islink(full_path):
+                    self.report(BcrValidationResult.FAILED, f"Dir symlink is not allowed: {full_path}")
+
     def validate_module(self, module_name, version, skipped_validations):
         print_expanded_group(f"Validating {module_name}@{version}")
-        self.verify_module_name_conflict()
         self.verify_module_existence(module_name, version)
         self.verify_git_repo_source_stability(module_name, version)
         if "source_repo" not in skipped_validations:
@@ -523,8 +599,23 @@ class BcrValidator:
                         f"but it's recorded in {module_name}'s metadata.json file.",
                     )
                     has_error = True
+
+            latest_version = metadata["versions"][-1]
+            if not metadata.get("deprecated") and latest_version in metadata.get("yanked_versions", {}):
+                self.report(
+                    BcrValidationResult.FAILED,
+                    f"The latest version ({latest_version}) of {module_name} should not be yanked, "
+                    f"please make sure a newer version is available before yanking it.",
+                )
+                has_error = True
+
         if not has_error:
             self.report(BcrValidationResult.GOOD, "All metadata.json files are valid.")
+
+    def global_checks(self):
+        """General global checks for BCR"""
+        self.verify_module_name_conflict()
+        self.verify_no_dir_symlinks()
 
     def getValidationReturnCode(self):
         # Calculate the overall return code
@@ -601,6 +692,9 @@ def main(argv=None):
 
     if args.check_all_metadata:
         validator.validate_all_metadata()
+
+    # Perform some global checks
+    validator.global_checks()
 
     return validator.getValidationReturnCode()
 

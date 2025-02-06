@@ -1,0 +1,27 @@
+name: Generate module diff
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'modules/**'
+
+jobs:
+  generate_module_diff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@cb605e52c26070c328afc4562f0b4ada7618a84e # v2.10.4
+        with:
+          egress-policy: audit
+
+      - name: Check out PR code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+
+      - name: Generate module diff ( ⭐ 🔍 Expand here to see the diff ⭐)
+        uses: bazelbuild/continuous-integration/actions/bcr-pr-reviewer@abb92bbd05306ecf90ac61baeaa534823d5f122a
+        with:
+          action-type: diff_module

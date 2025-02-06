@@ -133,6 +133,16 @@ local_path_override(
 
 **Note that** the task config syntax also follows [Bazel CI's specifications](https://github.com/bazelbuild/continuous-integration/tree/master/buildkite#configuring-a-pipeline), but just one level deeper under `bcr_test_module` and you have to specify the subdirectory of the test module via `module_path`. BCR requires the bazel version to be specified for each task via the `bazel` field.
 
+### Reproduce presubmit builds locally
+
+You can reproduce the presubmit environment locally by running the following command:
+
+```bash
+bazel run //tools:setup_presubmit_repos -- --module <module_name>@<version>
+```
+
+Then follow the instructions to run the build locally.
+
 ## Yank a module version
 
 If a module version is discovered with security vulnerabilities or for any reason should no longer be used, you can yank the module version by adding it to the `yanked` map in `metadata.json` and provide a reason.
@@ -147,6 +157,8 @@ For example, in `zlib`'s [metadata.json](https://github.com/bazelbuild/bazel-cen
 ```
 
 A Bzlmod user's build will start to fail if the yanked version is in the resolved dependency graph, and the yanked reason will be presented in the error message. The user can choose to upgrade the dependency or they can bypass the check by specifying the `--allow_yanked_versions` flag or the `BZLMOD_ALLOW_YANKED_VERSIONS` environment variable. Check [the documentation](https://bazel.build/reference/command-line-reference#flag--allow_yanked_versions) to learn how to use them.
+
+The latest version of a module should not be yanked. If you do need to yank the latest version because the module is deprecated, you should add `"deprecated": "<reason>"` in its `metadata.json` file.
 
 ## Versions format
 
